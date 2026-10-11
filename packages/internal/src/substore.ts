@@ -19,7 +19,7 @@
  *   <脚本文本>
  *   if (typeof main === 'function') { $content = yaml.safeDump(await main(config)) }
  *
- * 由此推出三条不可违反的约束，构建产物必须始终满足（均由 `pnpm smoke` 守护）：
+ * 由此推出四条不可违反的约束，构建产物必须始终满足（均由 `pnpm smoke` 守护）：
  *
  *   1. 脚本里必须有**顶层 `function operator` 声明**（文件路径下用 `main`）。
  *      末尾那行 `return operator` 取的是标识符，而函数声明才提供可被其取到的绑定。
@@ -31,11 +31,28 @@
  *      这就是 tsdown 配置里用 `format: 'es'` 而不是 `iife` 的原因 —— 反直觉但正确。
  *
  *   3. 入口文件**不能有 `export`**。
- *      一旦有导出，rolldown 会把产物改成
+ *      一旦有导出，rolldown 会保留 `export` 语句（实测 `format: 'es'`），而
+ *      `new Function` 无法解析模块语法，直接抛 `Unexpected token 'export'`；
+ *      历史上还有第二种失败形态：被改包成
  *          (function (exports) { ...; return exports; })({});
- *      函数同样被关进闭包；而且 `(...)({})` 这种调用放在 `${script}` 的插值位置
- *      （以及异步函数体内）无法解析，直接是语法错误。
- *      因此 tsdown 还必须配 `treeshake: false`，否则没被引用的顶层函数会被当死代码删掉。
+ *      函数同样被关进闭包，而且 `(...)({})` 这种调用放在 `${script}` 的插值位置
+ *      （以及异步函数体内）无法解析。**入口可以有 `import`**（产物会被内联成单文件），
+ *      就是不能有 `export`。
+ *
+ *   4. 入口必须有一条**引用入口函数的顶层副作用**（本仓库叫它 marker），
+ *      例如 `(globalThis as Record<string, unknown>).__substoreCleanEntry = { operator };`。
+ *      理由：`operator` / `main` 在源码里没有任何调用点，打包器开着 treeshake 时会把
+ *      顶层函数当死代码删掉。marker 让打包器看见「有人用了它」，于是 treeshake 可以开着。
+ *
+ *      为什么非要开着 treeshake：这是**引入 zod 之后才浮现的约束**。
+ *      关掉 treeshake 时整棵依赖图会被原样内联 —— 实测产物从约 42 kB 变成 613 kB
+ *      （gzip 从 13 kB 变成 111 kB），zod-mini 的体积优势全没了。
+ *      而给入口加 `export` 换不来这个效果（见第 3 条），所以 marker 是唯一可行的办法。
+ *
+ *      删掉 marker 不会让构建失败，只会让产物变成空壳 —— 这正是 `pnpm smoke` 要拦的：
+ *      它除了检查「行首有 `function operator`」，还会检查产物不以 `(` 开头、没有
+ *      `import` / `export` / `require(`，并把体积打出来（体积突然涨到 600 kB 就说明
+ *      treeshake 被关了）。
  */
 
 /**

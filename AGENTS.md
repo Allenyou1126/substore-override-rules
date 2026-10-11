@@ -11,11 +11,11 @@
 | `@substore/clean` | `substore-clean.js`        | 每条订阅的「节点操作 → 脚本操作」 | 该条订阅的**节点数组**           |
 | `@substore/rules` | `substore-rules.js`        | 最终集合的「文件 → 脚本操作」     | 生成配置里的 **mihomo 配置对象** |
 
-`packages/internal` 是内部共享包（契约类型），不构建、不发布，由 tsdown 内联进产物。
+`packages/internal` 是内部共享包（契约类型 + 脚本参数解析），不构建、不发布，由 tsdown 内联进产物。它依赖 `zod@4.6.5`（Zod Mini），**所以它现在有运行时依赖了**。
 
-**当前状态：只有框架，两个脚本都是透传占位。** 不要以为已有实现，也不要把占位符当成遗漏而自行「补全」——业务逻辑的添加是独立任务。
+**当前状态：只有框架。两个脚本只接了一个 `enabled` 参数（默认开着），节点与配置行为仍是透传。** 不要以为已有实现，也不要把占位符当成遗漏而自行「补全」——业务逻辑的添加是独立任务。
 
-## 三条不可违反的契约红线
+## 四条不可违反的契约红线
 
 这是本仓库最容易改坏的地方，**全部经过实测**（tsdown 0.23.0），且由 `pnpm smoke` 守护。
 
@@ -29,21 +29,27 @@ mihomo 配置路径另有一套：把脚本文本整体展开进异步函数，�
 
 由此：
 
-1. **入口文件不能有 `export` / `import`。**
-   一旦有导出，rolldown 会产出 `(function (exports) { … return exports; })({})`，把 `function operator` 关进闭包，外层的 `return operator` 就抛 `operator is not defined`；而且这种调用写在 `${script}` 插值位置本身就是语法错误。
+1. **入口文件不能有 `export`。**
+   `format: 'es'` 下 rolldown 会原样保留 `export` 语句，`new Function` 直接抛 `Unexpected token 'export'`；历史上还有一种失败形态是改成 `(function (exports) { … return exports; })({})`，把函数关进闭包。
+   **入口可以有 `import`**（内部包与 zod 都会被内联成单文件），只是不能有 `export`。
 
 2. **tsdown 的 `format` 必须是 `'es'`，不能是 `'iife'`。**
    看着反直觉，但实测 `iife` 会产出 `(function () { … })();`，同样把函数关进闭包，报 `operator is not defined`。`es` + 入口无导出才会输出裸脚本。
 
-3. **`treeshake` 必须为 `false`。**
-   顶层 `operator` / `main` 没有任何源码引用，摇树会把它们当死代码删掉，产物只剩空壳。
+3. **`treeshake` 必须为 `true`，且入口末尾必须保留 marker 赋值。**
+   顶层 `operator` / `main` 没有任何源码引用，treeshake 会把它们当死代码删掉。所以入口末尾要有一条引用它们的**真实顶层副作用**（`(globalThis as Record<string, unknown>).__substoreCleanEntry = { operator };`）——打包器看见它就不会删函数，treeshake 于是可以开着。
+   **marker 不能删**：删了产物会静默变成空壳（由 `pnpm smoke` 拦下）。
+   **也不要退回 `treeshake: false`**：那样整棵依赖图会被原样内联，实测产物从约 42 kB 涨到 613 kB，zod-mini 的体积优势全没了。
+
+4. **产物不能把函数包进任何闭包，也不能出现 `require(`。**
+   `platform: 'neutral'` 保证不注入 Node 平台假设；Sub-Store 的 `new Function` 环境里 `require` 是 `undefined`。
 
 改动构建配置或入口文件后，**必须**跑 `pnpm smoke`（`pnpm verify` 已包含）。单元测试**测不到**这些问题：它读的是源码模块，Sub-Store 执行的是产物文本。
 
 ### 由此派生的两个「看起来奇怪但正确」的点
 
-- 入口里的 `operator` / `main` 是**故意未被引用**的。它们在根 `.oxlintrc.json`（override）和 `packages/*/tsconfig.json`（`noUnusedLocals: false`）里被显式放过。**不要改成 export，也不要重新打开这两个检查**——`@ts-expect-error` 与 `// oxlint-disable-next-line` 都要求自己是紧邻上一行，无法共存，所以只能配置级放过。若要让它们可被单元测试调用，请把纯逻辑抽成单独的可导出模块，入口只负责编排。
-- `pnpm smoke` 除了调用一次，还会**静态检查产物不以 `(` 开头**、必须含顶层函数声明。这正是为了拦住上面三个坑。
+- 入口里的 `operator` / `main` 在源码里**没有调用点**，靠末尾的 marker 让打包器认为它们被用到。它们在根 `.oxlintrc.json`（override）和 `packages/*/tsconfig.json`（`noUnusedLocals: false`）里仍被显式放过 —— **不要改成 export，也不要重新打开这两个检查**。若要让它们可被单元测试调用，请把纯逻辑抽成单独的可导出模块，入口只负责编排。
+- `pnpm smoke` 除了实际调用一次，还会**静态检查产物不以 `(` 开头**、必须含顶层函数声明、不含 `import` / `export` / `require(`，并**打印每个产物的字节数与 gzip 体积**——体积突然涨到几百 kB 就说明 treeshake 被关了。
 
 ## 每次改动都要过的关卡
 

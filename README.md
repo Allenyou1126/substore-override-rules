@@ -2,7 +2,7 @@
 
 用 TypeScript 编写、由 tsdown 打包成**单文件脚本**，供 [Sub-Store](https://github.com/sub-store-org/Sub-Store) 直接引用的一组订阅处理工具。
 
-> **当前状态：只有框架。** 构建、检查、发版链路已完整可用，但两个脚本的实现都是**透传占位**——不含任何过滤、重命名、去重或分流规则逻辑。见 [后续开发](#后续开发)。
+> **当前状态：只有框架。** 构建、检查、发版链路已完整可用，但两个脚本的行为仍是**透传**——不含任何过滤、重命名、去重或分流规则逻辑。唯一的例外是参数解析链路已经打通：脚本接受一个 `enabled` 参数（默认 `true`），传 `enabled=false` 可以让 `substore-clean` 返回空数组。见 [脚本参数](#脚本参数) 与 [后续开发](#后续开发)。
 
 ## 两个脚本
 
@@ -11,7 +11,7 @@
 | `@substore/clean` | `packages/substore-clean/dist/substore-clean.js` | 每条订阅的「节点操作 → 脚本操作」 | 该条订阅的**节点数组**           |
 | `@substore/rules` | `packages/substore-rules/dist/substore-rules.js` | 最终集合的「文件 → 脚本操作」     | 生成配置里的 **mihomo 配置对象** |
 
-`packages/internal` 是内部共享包（类型与运行时契约），不构建、不发布，由 tsdown 内联进上面两个产物。
+`packages/internal` 是内部共享包（契约类型 + 脚本参数解析），不构建、不发布，由 tsdown 内联进上面两个产物。它依赖 `zod@4.6.5`（Zod Mini）。
 
 ## 命令
 
@@ -50,9 +50,38 @@ https://blog-oss.allenyou.top/substore-override-rules/latest/substore-clean.js
 https://blog-oss.allenyou.top/substore-override-rules/latest/substore-rules.js
 ```
 
-脚本参数通过链接 `#参数=值` 或编辑页参数传入（`$arguments`），当前占位实现不读取任何参数。
+脚本参数通过链接 `#参数=值` 或编辑页参数传入（`$arguments`）。详细的参数表与解析规则见 [脚本参数](#脚本参数)。
 
 > 若客户端仍拉到旧内容，通常是 CDN 或客户端缓存。给链接加一个变化的时间戳查询串即可绕过（不要用 `?$options=` 传参的空间）。
+
+## 脚本参数
+
+目前两个脚本只接受一个总开关（默认 `true`，也就是不改变任何东西）：
+
+| 参数      | 类型    | 默认值 | 作用                                              |
+| --------- | ------- | ------ | ------------------------------------------------- |
+| `enabled` | boolean | `true` | `false` 时 `substore-clean` 返回空数组（丢弃全部节点） |
+
+传参方式（`$arguments` 的几种来源都被解析层接住了）：
+
+```text
+# 编辑页「参数」字段：直接填 JSON
+{ "enabled": false }
+
+# 链接：JSON 形式
+https://blog-oss.allenyou.top/substore-override-rules/latest/substore-clean.js#%7B%22enabled%22%3Afalse%7D
+
+# 链接：k=v 形式（值一律当字符串处理，再由解析层转成 boolean / 数字）
+https://blog-oss.allenyou.top/substore-override-rules/latest/substore-clean.js#enabled=false
+```
+
+解析规则与边界（实现见 [`packages/internal/src/params.ts`](packages/internal/src/params.ts)，单测在同目录的 `params.test.ts`）：
+
+- **布尔值**接受 `true` / `false` / `1` / `0` / `yes` / `no` / `on` / `off`（大小写与前后空白不敏感）。
+  刻意不用 zod 的 `z.coerce.boolean()` —— 它会把 `'false'` 判成 `true`。
+- **参数值非法会抛错**，Sub-Store 会把它写进日志（`Parser [Script Operator] failed ... Reason: ...`）。这是刻意的：静默回退默认值会让「参数写错了」变成「参数没生效」。
+- **参数名写错不会报错**（未声明的键被剥离）。Sub-Store 自己的 `noCache` / `insecure` 就在同一份 `$arguments` 里，而且钉住旧版本的链接在脚本升级后必须继续可用。
+- 即时预览页拿不到参数时按「没传」处理，全部取默认值。
 
 ## 产物契约（改动构建配置前务必读）
 
@@ -62,20 +91,23 @@ Sub-Store 是把脚本当**脚本文本**执行的，不是 `import` 一个模�
 new Function('$arguments', '$options', ..., `${script}\n return operator`)(...)
 ```
 
-由此产生三条硬约束，**已实测**（tsdown 0.23.0）：
+由此产生四条硬约束，**已实测**（tsdown 0.23.0）：
 
 1. 入口必须有**顶层 `function operator`**（mihomo 配置路径用 `main`），且**不能有 `export`**。
-   一旦有导出，rolldown 会改成 `(function (exports) { … return exports; })({})`——函数被关进闭包，Sub-Store 取不到，而且这种调用写在 `${script}` 位置本身就是语法错误。
+   有导出时 `format: 'es'` 会原样输出 `export` 语句，`new Function` 直接语法错误；历史上还有被包成 `(function (exports) { … })({})` 的失败形态。
+   **入口可以有 `import`**（内部包与 zod 都会被打包进同一份产物）。
 2. tsdown 的 `format` 必须是 **`'es'`**，不能是 `'iife'`。
-   `iife` 会产出 `(function () { … })();`，同样把函数关进闭包，实测报 `operator is not defined`。
-3. `treeshake` 必须关闭，否则没人引用的顶层函数会被当死代码删掉。
+   `iife` 会产出 `(function () { … })();`，把函数关进闭包，实测报 `operator is not defined`。
+3. `treeshake` 必须开着，**同时入口末尾必须保留 marker 赋值**（`(globalThis as …).__substoreCleanEntry = { operator };`）。
+   入口函数没有源码引用，marker 用一条真实副作用让打包器保住它们。删掉 marker 产物会静默变空壳；退回 `treeshake: false` 则整棵依赖图被原样内联，产物从约 42 kB 涨到 613 kB。
+4. 产物不能以 `(` 开头、不能出现 `require(`。
 
-`pnpm smoke` 会逐条守住这些约束（检查产物形状 + 用复刻环境真正调用一次），改动构建配置后请务必跑它。完整说明见 [`packages/internal/src/substore.ts`](packages/internal/src/substore.ts)。
+`pnpm smoke` 会逐条守住这些约束（检查产物形状 + 用复刻环境真正调用一次 + 注入 `$arguments` 验证参数链路 + 打印字节数与 gzip 体积），改动构建配置后请务必跑它。完整说明见 [`packages/internal/src/substore.ts`](packages/internal/src/substore.ts)。
 
 ## 仓库结构
 
 ```
-packages/internal/          # 内部共享：Sub-Store 契约类型（不构建、不发布）
+packages/internal/          # 内部共享：Sub-Store 契约类型 + 脚本参数解析（不构建、不发布）
 packages/substore-clean/    # 交付包 1：订阅清洗
 packages/substore-rules/    # 交付包 2：配置分流规则
 tools/                      # 校验器与冒烟脚本
@@ -104,6 +136,11 @@ docs/release.md                 # 发版手册（OSS 前置条件、回滚、排
 
 - `packages/substore-clean/src/index.ts` —— 节点过滤、重命名与编号、去重、字段统一。
 - `packages/substore-rules/src/index.ts` —— 规则集数据、策略组构造、配置合并。
+
+参数解析这块**已经不用再写**了：`@substore/internal` 导出了
+`parseScriptParams(schema, $arguments)` 与三个强制转换 helper（`zBool` / `zIntIn` / `zCsv`），
+`$arguments` 的四种来源形态、字符串到类型的转换、错误消息都处理好了。
+新增业务参数只需要在各自入口的 schema 里加字段，用法见 [脚本参数](#脚本参数)。
 
 开发时请先读 [docs/standards/development.md](docs/standards/development.md)：里面有提交信息格式（**AI 辅助必须附 `Assisted-By` 尾注**）、版本递增判定表和契约红线。
 

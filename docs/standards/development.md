@@ -175,7 +175,8 @@ pnpm check:version --check --tag v0.2.0
 
 - **pnpm ≥ 12.4.1**（`packageManager` 字段已固定为 `pnpm@12.4.1`），**Node ≥ 22.18**（`engines`），CI 固定 `node@24`。
 - **所有依赖写精确版本**，不用 `^` / `~`。这是刻意的：发版时由 CI 从 tag 的源码重新构建产物，依赖浮动会让「同一个 tag 两次构建出不同内容」，构建必须可复现。
-- 当前固定：`tsdown@0.23.0`、`oxlint@1.87.0`、`oxfmt@0.72.0`、`oxlint-tsgolint@7.0.2003`、`typescript@7.0.2`、`vitest@5.0.3`、`@types/node@26.6.5`。
+- 当前固定：`tsdown@0.23.0`、`oxlint@1.87.0`、`oxfmt@0.72.0`、`oxlint-tsgolint@7.0.2003`、`typescript@7.0.2`、`vitest@5.0.3`、`@types/node@26.6.5`、`zod@4.6.5`（Zod Mini，`packages/internal` 的运行时依赖）。
+- `zod` 写在 `packages/internal` 的 **devDependencies** 而不是 dependencies，是刻意的：产物是自包含脚本，Sub-Store 不 `import` 本包；tsdown 只把生产依赖当 external，因此 zod 会被内联进产物。
 
 ### 4.2 `minimumReleaseAge`：不要关闭
 
@@ -207,22 +208,27 @@ allowBuilds: {} # 无依赖需要放行安装脚本
 
 ## 5. 契约红线
 
-以下三条是「产物能被 Sub-Store 执行」的前提，由 `pnpm smoke` 守护。改动构建配置或入口文件前先读 [`packages/internal/src/substore.ts`](../../packages/internal/src/substore.ts) 顶部注释。
+以下四条是「产物能被 Sub-Store 执行」的前提，由 `pnpm smoke` 守护。改动构建配置或入口文件前先读 [`packages/internal/src/substore.ts`](../../packages/internal/src/substore.ts) 顶部注释。
 
-1. **入口必须有顶层函数声明**，且**不能有 `export`/`import`**。
-   Sub-Store 用 `new Function(..., script + '\n return operator')` 取入口；文件路径下用 `typeof main === 'function'` 找入口。一旦有导出，rolldown 会把函数包进 `(function (exports) { … })({})`，两者都会失效。
+1. **入口必须有顶层函数声明**（`operator`；mihomo 配置文件路径用 `main`），且**不能有 `export`**（**可以有 `import`**）。
+   Sub-Store 用 `new Function(..., script + '\n return operator')` 取入口；文件路径下用 `typeof main === 'function'` 找入口。有导出时 rolldown 在 `format: 'es'` 下会原样输出 `export` 语句，`new Function` 直接语法错误；历史上还有被包进 `(function (exports) { … })({})` 的失败形态。入口的 `import` 会被内联成单文件，不构成问题。
 2. **tsdown `format` 必须是 `'es'`**，不能是 `'iife'`。
    实测：`iife` 产出 `(function () { … })();`，函数被关进闭包，`return operator` 报 `operator is not defined`。
-3. **`treeshake` 必须为 `false`**，否则无人引用的顶层函数会被当死代码删除。
+3. **`treeshake` 必须为 `true`，且入口末尾必须保留 marker 赋值**（形如 `(globalThis as Record<string, unknown>).__substoreCleanEntry = { operator };`）。
+   入口函数在源码里没有任何调用点，marker 用一条真实顶层副作用让打包器保住它们。
+   - 删掉 marker：产物**静默**变成空壳（构建不会失败），由 `pnpm smoke` 的「顶层函数声明」断言拦下。
+   - 退回 `treeshake: false`：整棵依赖图被原样内联，实测产物由约 42 kB 涨到 613 kB（gzip 13 kB → 111 kB），引入 Zod Mini 的意义全部消失。`pnpm smoke` 会打印体积，便于发现。
+4. **产物不能把函数包进闭包，也不能出现 `require(`**。
+   `platform: 'neutral'` 保证不注入 Node 平台假设；`new Function` 环境里 `require` 是 `undefined`。
 
-`pnpm smoke` 会检查产物形状并以复刻的 Sub-Store 环境实际调用一次。**它是产物契约的唯一验收手段，任何构建配置改动都必须让它通过。**
+`pnpm smoke` 会检查产物形状、以复刻的 Sub-Store 环境实际调用一次（含注入 `$arguments` 验证参数链路），并打印每个产物的字节数与 gzip 体积。**它是产物契约的唯一验收手段，任何构建配置改动都必须让它通过。**
 
 ### 5.1 测试分工
 
-| 层次     | 工具                                 | 覆盖什么                                                          |
-| -------- | ------------------------------------ | ----------------------------------------------------------------- |
-| 单元测试 | vitest（`packages/*/src/*.test.ts`） | 可复用的纯函数逻辑；入口源码的文本契约（顶层函数存在、无 export） |
-| 产物冒烟 | `tools/smoke.mjs`                    | `dist/*.js` 的真实形状与可执行性                                  |
+| 层次     | 工具                                 | 覆盖什么                                                                       |
+| -------- | ------------------------------------ | ------------------------------------------------------------------------------ |
+| 单元测试 | vitest（`packages/*/src/*.test.ts`） | 可复用的纯函数逻辑；入口源码的文本契约（顶层函数存在、无 export、marker 存在） |
+| 产物冒烟 | `tools/smoke.mjs`                    | `dist/*.js` 的真实形状、可执行性、`$arguments` 参数链路与体积                  |
 
 **两者不可互相替代**：单元测试测的是源码模块，Sub-Store 执行的是产物文本，取入口的机制完全不同。开发新逻辑时，把可测的纯粹逻辑抽成可导出的小模块，入口只负责编排——否则这段逻辑在单元测试里无从触及。
 

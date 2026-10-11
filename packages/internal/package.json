@@ -4,11 +4,15 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "内部共享包：Sub-Store 运行时契约类型与全局对象声明（不构建、不发布）",
+  "description": "内部共享包：Sub-Store 运行时契约类型与脚本参数解析（不构建、不发布）",
   "exports": {
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "zod": "4.6.5"
   }
 }

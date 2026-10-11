@@ -63,21 +63,32 @@ export function createGlobals(overrides = {}) {
 }
 
 /**
- * 用与 Sub-Store 相同的方式把脚本文本编译成 `operator` 函数。
+ * 用与 Sub-Store 相同的方式把脚本文本编译成**整个作用域**。
+ *
+ * 为什么不是只返回 `operator`：mihomo 配置路径取的是 `main`（见 OPERATOR_TAIL 的说明），
+ * 而 `return operator` 这个尾巴只能取到一个名字。所以这里把求值出来的整个作用域交出去，
+ * 由调用方按名字取所需入口 —— 两条路径都能测到，且求值环境与上游完全一致。
  *
  * @param {string} script 产物文件内容
  * @param {Record<string, unknown>} [overrides] 注入的自由变量，例如 `$arguments`
- * @returns {Function} 取到的 `operator`
+ * @returns {{ operator?: unknown, main?: unknown }} 作用域里能取到的入口
  */
-export function loadOperator(script, overrides = {}) {
+export function loadEntries(script, overrides = {}) {
   const globals = createGlobals(overrides);
 
   let factory;
   try {
+    // 用 `typeof x === 'function' ? x : undefined` 而不是直接列出标识符：
+    // clean 产物里没有 `main`，直接 `{ main }` 会抛 ReferenceError。
     // 这里必须用 Function 构造器 —— 它的唯一目的就是复刻 Sub-Store 的求值方式。
     // 换成 eval 或直接 import 都会让测试偏离真实运行环境，失去把关意义。
     // oxlint-disable-next-line typescript/no-implied-eval -- 刻意复刻 Sub-Store 的 new Function
-    factory = new Function(...SUBSTORE_GLOBALS, `${script}${OPERATOR_TAIL}`);
+    factory = new Function(
+      ...SUBSTORE_GLOBALS,
+      `${script}\n return {` +
+        " operator: typeof operator === 'function' ? operator : undefined," +
+        " main: typeof main === 'function' ? main : undefined }",
+    );
   } catch (error) {
     throw new Error(
       `脚本文本无法被 Sub-Store 求值（new Function 抛错）：${error.message}\n` +
@@ -87,15 +98,26 @@ export function loadOperator(script, overrides = {}) {
     );
   }
 
-  const operator = factory(...SUBSTORE_GLOBALS.map((name) => globals[name]));
+  const entries = factory(...SUBSTORE_GLOBALS.map((name) => globals[name]));
 
-  if (typeof operator !== 'function') {
+  if (typeof entries.operator !== 'function') {
     throw new Error(
       'Sub-Store 的 `return operator` 取到的不是函数。\n' +
-        '  最常见的原因：入口里的顶层 `function operator` 声明被摇树删掉了。\n' +
-        '  检查 packages/*/tsdown.config.ts 里的 treeshake 是否为 false。',
+        '  最常见的原因：入口里那条保住顶层函数声明的 marker 被删了，函数被摇树删掉。\n' +
+        '  检查 packages/*/src/index.ts 末尾的 `__substore*Entry` 赋值。',
     );
   }
 
-  return operator;
+  return entries;
+}
+
+/**
+ * 只需要 `operator` 时的便捷包装。
+ *
+ * @param {string} script 产物文件内容
+ * @param {Record<string, unknown>} [overrides] 注入的自由变量，例如 `$arguments`
+ * @returns {Function} 取到的 `operator`
+ */
+export function loadOperator(script, overrides = {}) {
+  return loadEntries(script, overrides).operator;
 }
