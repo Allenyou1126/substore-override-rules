@@ -1,0 +1,178 @@
+name: release
+
+# 由人手动打 tag 触发 —— 版本决定权留在人手里，CI 不需要 prod 分支的写权限。
+# 发版流程见 docs/release.md。
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  NODE_RUNTIME: node@24
+
+  # OSS 目标。Bucket 与地域不是机密，直接写在这里便于审查。
+  # 该 Bucket 是共享的，substore-override-rules/ 前缀是唯一的边界：
+  # 下面所有对象键都必须在这个前缀内。
+  OSS_BUCKET: blog-hk
+  OSS_REGION: cn-hongkong
+  OSS_S3_ENDPOINT: https://s3.oss-cn-hongkong.aliyuncs.com
+  OSS_PREFIX: substore-override-rules
+
+  # 对外读取域名（已回源到上述 Bucket）。Sub-Store 靠它拉脚本。
+  DIST_DOMAIN: https://blog-oss.allenyou.top
+
+jobs:
+  publish:
+    name: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/setup@7baa639cc3f69d4a4fbff1272f024a8393e12c21 # v3
+        with:
+          runtime: ${{ env.NODE_RUNTIME }}
+          cache: true
+
+      - name: 版本号与 tag 一致性校验
+        run: pnpm check:version --check --tag "$GITHUB_REF_NAME"
+
+      - name: 构建与产物契约校验
+        run: |
+          pnpm build
+          pnpm smoke
+
+      - name: 配置 OSS 凭证（S3 兼容接口）
+        uses: aws-actions/configure-aws-credentials@4a1596c86fd706dc0521e32f0121ad1a6d1adb74 # v6
+        with:
+          aws-access-key-id: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          aws-region: ${{ env.OSS_REGION }}
+
+      - name: 上传产物到 OSS
+        env:
+          AWS_ENDPOINT_URL_S3: ${{ env.OSS_S3_ENDPOINT }}
+        run: |
+          set -eu
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          BASE="s3://${OSS_BUCKET}/${OSS_PREFIX}"
+
+          # 版本目录不可变：内容永远对应这个版本，可以用 immutable 长缓存
+          IMMUTABLE_CACHE='public, max-age=31536000, immutable'
+          # 别名目录会被后续发版覆盖：短缓存，发布后按 docs/release.md 刷新 CDN
+          ALIAS_CACHE='public, max-age=300'
+
+          upload() {
+            local file="$1" key="$2" cache="$3"
+            echo "上传 ${file} → ${key}"
+            aws s3 cp "$file" "${BASE}/${key}" \
+              --content-type 'application/javascript; charset=utf-8' \
+              --cache-control "$cache" \
+              --no-progress \
+              --only-show-errors
+          }
+
+          for pkg in substore-clean substore-rules; do
+            local_file="packages/${pkg}/dist/${pkg}.js"
+
+            if [ ! -f "$local_file" ]; then
+              echo "::error::找不到产物 $local_file"
+              exit 1
+            fi
+
+            upload "$local_file" "${VERSION}/${pkg}.js" "$IMMUTABLE_CACHE"
+            upload "$local_file" "latest/${pkg}.js" "$ALIAS_CACHE"
+            upload "$local_file" "${pkg}.js" "$ALIAS_CACHE"
+          done
+
+      - name: 校验上传结果与公网可读性
+        env:
+          AWS_ENDPOINT_URL_S3: ${{ env.OSS_S3_ENDPOINT }}
+        run: |
+          set -eu
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          failed=0
+
+          for pkg in substore-clean substore-rules; do
+            key="${OSS_PREFIX}/${VERSION}/${pkg}.js"
+            file="packages/${pkg}/dist/${pkg}.js"
+
+            # 1) 带凭证核对对象确实存在，且大小与本地一致
+            remote_size=$(aws s3api head-object \
+              --bucket "$OSS_BUCKET" --key "$key" \
+              --query 'ContentLength' --output text)
+            local_size=$(wc -c < "$file" | tr -d ' ')
+
+            if [ "$remote_size" != "$local_size" ]; then
+              echo "::error file=$file::OSS 上的对象大小 ($remote_size) 与本地 ($local_size) 不一致：$key"
+              failed=1
+              continue
+            fi
+
+            # 2) 匿名拉取：同时验证「匿名可读」与「自定义域名回源正确」
+            url="${DIST_DOMAIN}/${key}"
+            http_code=$(curl -sS -o /tmp/downloaded.js -w '%{http_code}' "$url" || echo '000')
+
+            if [ "$http_code" != "200" ]; then
+              echo "::error::匿名拉取 $url 返回 HTTP $http_code。"
+              echo "  最常见原因：Bucket 未对 ${OSS_PREFIX}/* 开放匿名只读，或域名未回源到该 Bucket。"
+              echo "  处置见 docs/release.md 的「前置条件」与「故障排查」。"
+              failed=1
+              continue
+            fi
+
+            if ! cmp -s "$file" /tmp/downloaded.js; then
+              echo "::error::$url 返回的内容与本地产物不一致（可能是 CDN 缓存了旧内容）。"
+              failed=1
+              continue
+            fi
+
+            echo "✓ ${pkg}: $url（${local_size} 字节，匿名可读且内容一致）"
+          done
+
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::发布校验失败。产物已上传，但对外链接不可用 —— 请修好后再重新发版。"
+            exit 1
+          fi
+
+      - name: 建 GitHub Release（存档）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          # 用 printf 逐行生成说明，避免 heredoc 在 YAML block scalar 里的缩进问题：
+          # YAML 会把 run: 的缩进原样带进脚本，heredoc 正文因此会多出前导空格。
+          notes_file="$(mktemp)"
+          trap 'rm -f "$notes_file"' EXIT
+
+          printf '%s\n' \
+            '## 对外链接（阿里云 OSS）' \
+            '' \
+            '```' \
+            "${DIST_DOMAIN}/${OSS_PREFIX}/${VERSION}/substore-clean.js" \
+            "${DIST_DOMAIN}/${OSS_PREFIX}/${VERSION}/substore-rules.js" \
+            '```' \
+            '' \
+            '跟随最新版（链接不变，内容会被后续发版覆盖）：' \
+            '' \
+            '```' \
+            "${DIST_DOMAIN}/${OSS_PREFIX}/latest/substore-clean.js" \
+            "${DIST_DOMAIN}/${OSS_PREFIX}/latest/substore-rules.js" \
+            '```' \
+            >"$notes_file"
+
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --generate-notes \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$notes_file" \
+            "packages/substore-clean/dist/substore-clean.js#substore-clean.js（产物存档）" \
+            "packages/substore-rules/dist/substore-rules.js#substore-rules.js（产物存档）"

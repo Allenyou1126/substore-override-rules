@@ -1,0 +1,9 @@
+# 统一换行符：.githooks/ 下的钩子脚本一旦被 Windows 检出成 CRLF，
+# git 会因为 shebang 带 \r 而拒绝执行，钩子静默失效。
+* text=auto eol=lf
+
+# 产物不进版本库（见 .gitignore），因此这里不需要为 dist/ 标注生成属性。
+# 若将来改回提交产物，记得同时加回 `dist/** linguist-generated=true`。
+
+*.png binary
+*.jpg binary

@@ -1,0 +1,108 @@
+name: verify
+
+# dev 分支的任何事件都不触发 —— dev 上的代码不做任何可用性保证。
+on:
+  pull_request:
+    branches: [prod]
+  push:
+    branches: [prod]
+
+permissions:
+  contents: read
+
+env:
+  NODE_RUNTIME: node@24
+
+jobs:
+  # 先跑快的：提交信息不合规就没必要再花几分钟构建。
+  commit-messages:
+    name: commit-messages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # 需要完整历史才能按范围读取提交信息
+          fetch-depth: 0
+
+      - uses: pnpm/setup@7baa639cc3f69d4a4fbff1272f024a8393e12c21 # v3
+        with:
+          runtime: ${{ env.NODE_RUNTIME }}
+          install: false
+
+      - name: 校验提交信息（语义化提交 + Assisted-By 尾注）
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          node --version
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            # PR 的 base..head 就是要合入的全部提交，逐条校验
+            echo "校验范围：${BASE_SHA}..${HEAD_SHA}"
+            node tools/check-commit-msg.mjs --range "${BASE_SHA}..${HEAD_SHA}"
+          else
+            # push 到 prod 只校验被推送的这一个提交。
+            # 不用 before..after：强制推送会让 before 指向的提交从历史里消失，
+            # 范围直接不可读。而 prod 不接收普通提交，被合入的 dev 提交已经由
+            # pull_request 事件那一轮逐条校验过，这里不需要重复。
+            node tools/check-commit-msg.mjs --head
+          fi
+
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/setup@7baa639cc3f69d4a4fbff1272f024a8393e12c21 # v3
+        with:
+          runtime: ${{ env.NODE_RUNTIME }}
+          cache: true
+
+      - name: 取回 dev 分支引用（判定合入来源需要）
+        run: git fetch --no-tags origin dev:refs/remotes/origin/dev || echo "dev 分支在远端还不存在，跳过。"
+
+      - name: 守卫：prod 只接受来自 dev 的合入
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+          AFTER_SHA: ${{ github.event.after }}
+        run: |
+          set +e
+          node tools/check-prod-source.mjs \
+            --event "$EVENT_NAME" \
+            --head-ref "$HEAD_REF" \
+            --base-ref "$BASE_REF" \
+            --sha "$AFTER_SHA" \
+            --pushed-ref origin/dev
+          code=$?
+          set -e
+
+          if [ "$code" -eq 2 ]; then
+            echo "::warning title=无法确认合入来源::check-prod-source 退出码 2（证据不足），已放行。请人工确认本次 prod 变更确实来自 dev。"
+            exit 0
+          fi
+
+          exit "$code"
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 版本号校验
+        run: pnpm check:version --check
+
+      - name: 代码检查（typecheck + oxlint + oxfmt）
+        run: pnpm check
+
+      - name: 构建
+        run: pnpm build
+
+      - name: 产物冒烟（Sub-Store 执行契约）
+        run: pnpm smoke
+
+      - name: 单元测试
+        run: pnpm test

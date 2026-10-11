@@ -1,0 +1,15 @@
+packages:
+  - 'packages/*'
+
+# pnpm 12 的供应链保护：只安装发布满 1440 分钟（24 小时）的版本。
+# 显式写出来有两个原因：
+#   1. 默认值可能随版本漂移，写死才能保证 CI 与本地判定一致；
+#   2. 显式配置会让 minimumReleaseAgeStrict 默认转为 true —— 找不到满足条件的
+#      版本时直接解析失败，而不是静默降级到新版本。
+# 被拦住的版本请等待，或退回到已满 24h 的最近版本。不要关闭此项。
+minimumReleaseAge: 1440
+
+# 依赖构建脚本白名单。本工具链（tsdown / oxlint / oxfmt / vitest / typescript）
+# 均为预编译产物，无需放行任何 postinstall；将来引入原生模块时在此逐项加 true，
+# 不要使用 dangerouslyAllowAllBuilds。
+allowBuilds: {}

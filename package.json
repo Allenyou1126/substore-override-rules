@@ -1,0 +1,38 @@
+{
+  "name": "substore-override-rules",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sub-Store Override 脚本集合：订阅清洗与配置分流规则",
+  "license": "MIT",
+  "packageManager": "pnpm@12.4.1",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "prepare": "node scripts/setup-hooks.mjs",
+    "hooks:install": "node scripts/setup-hooks.mjs",
+    "typecheck": "pnpm -r --no-bail typecheck",
+    "test": "pnpm -r --no-bail test",
+    "build": "pnpm -r --no-bail build",
+    "clean": "pnpm -r --no-bail exec rm -rf dist",
+    "lint": "oxlint --type-aware",
+    "lint:fix": "oxlint --type-aware --fix",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check",
+    "check:version": "node tools/check-version.mjs",
+    "commit:check": "node tools/check-commit-msg.mjs",
+    "smoke": "node tools/smoke.mjs",
+    "verify": "pnpm check && pnpm check:version --check && pnpm build && pnpm smoke && pnpm test"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "oxfmt": "0.72.0",
+    "oxlint": "1.87.0",
+    "oxlint-tsgolint": "7.0.2003",
+    "tsdown": "0.23.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  }
+}

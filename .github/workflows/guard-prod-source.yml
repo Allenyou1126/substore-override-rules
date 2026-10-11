@@ -1,0 +1,56 @@
+name: guard-prod-source
+
+# 单独成一个 workflow：这是分支拓扑规则，与「代码能不能跑」是两件事，
+# 分开之后失败信息更清楚，也方便将来单独把它设成必需检查。
+on:
+  pull_request:
+    branches: [prod]
+  push:
+    branches: [prod]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: guard-prod-source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # 判定合入来源需要合入提交的两个父提交
+          fetch-depth: 0
+
+      - uses: pnpm/setup@7baa639cc3f69d4a4fbff1272f024a8393e12c21 # v3
+        with:
+          runtime: node@24
+          install: false
+
+      - name: 取回 dev 分支引用（判定合入来源需要）
+        run: git fetch --no-tags origin dev:refs/remotes/origin/dev || echo "dev 分支在远端还不存在，跳过。"
+
+      - name: 校验合入来源
+        env:
+          # 用 env 传值而不是直接插进 run，避免脚本注入
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+          AFTER_SHA: ${{ github.event.after }}
+        run: |
+          set +e
+          node tools/check-prod-source.mjs \
+            --event "$EVENT_NAME" \
+            --head-ref "$HEAD_REF" \
+            --base-ref "$BASE_REF" \
+            --sha "$AFTER_SHA" \
+            --pushed-ref origin/dev
+          code=$?
+          set -e
+
+          # 退出码 2 = 证据不足（例如首次建立 prod），不当作违规
+          if [ "$code" -eq 2 ]; then
+            echo "::warning title=无法确认合入来源::证据不足，已放行；请人工确认本次 prod 变更来自 dev。"
+            exit 0
+          fi
+
+          exit "$code"

@@ -1,0 +1,15 @@
+{
+  "name": "@substore/rules",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "配置分流规则脚本：配置在最终集合/生成配置文件上",
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@substore/internal": "workspace:*"
+  }
+}

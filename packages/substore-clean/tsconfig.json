@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    /* 测试文件会读源码文本（fs / import.meta.url），需要 Node 类型；
+       全局 URL 与 import.meta.url 需要 DOM lib。
+       这里只为类型检查，不影响产物：tsdown 的 platform 是 'neutral'，不注入任何 Node/DOM 假设。 */
+    "types": ["node"],
+    "lib": ["ES2022", "DOM"],
+
+    /* 入口文件是本包唯一的源码，且被刻意写成「由 Sub-Store 在运行时取用的顶层函数」：
+       `operator` / `main` 在源码里没有任何调用点。TS 会报 TS6133，而它无法在单行抑制 ——
+       `@ts-expect-error` 与 oxlint 的 `// oxlint-disable-next-line` 都要求自己是紧邻上一行，
+       不能共存。因此这里关闭未使用检查，改由 .oxlintrc.json 的 override 对其它文件生效，
+       并由契约测试（src/index.test.ts）与 `pnpm smoke` 守住入口形状。 */
+    "noUnusedLocals": false
+  },
+  "include": ["src/**/*.ts", "tsdown.config.ts"]
+}

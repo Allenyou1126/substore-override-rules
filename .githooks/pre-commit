@@ -1,0 +1,22 @@
+#!/bin/sh
+# 提交前提醒：改了脚本源码或构建配置时，提示跑一次冒烟。
+#
+# 真正的内容校验在 commit-msg 钩子（那时提交信息才写进文件）。
+#
+# dist/ 不进版本库，所以这里不再提示「忘记提交产物」——改为提示 smoke：
+# 产物形状的三条约束（入口无 export、tsdown 用 es 格式、treeshake 关闭）
+# 从源码看不出来，只有 pnpm smoke 能发现。
+
+changed_src=$(git diff --cached --name-only --diff-filter=ACMR -- 'packages/*/src/*.ts' \
+  | grep -v '\.test\.ts$' || true)
+
+changed_build=$(git diff --cached --name-only --diff-filter=ACMR -- \
+  'packages/*/tsdown.config.ts' 'packages/*/package.json' 'pnpm-workspace.yaml' || true)
+
+if [ -n "$changed_src" ] || [ -n "$changed_build" ]; then
+  echo "提示：本次提交改动了脚本源码或构建配置。"
+  echo "  提交前建议运行 pnpm smoke（或直接 pnpm verify）——"
+  echo "  产物是否仍能被 Sub-Store 执行，只有它能把关。"
+fi
+
+exit 0

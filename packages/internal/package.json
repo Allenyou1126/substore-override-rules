@@ -1,0 +1,13 @@
+{
+  "name": "@substore/internal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "内部共享包：Sub-Store 运行时契约类型与全局对象声明（不构建、不发布）",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

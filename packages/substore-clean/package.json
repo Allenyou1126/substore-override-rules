@@ -1,0 +1,15 @@
+{
+  "name": "@substore/clean",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "订阅清洗脚本：配置在每条订阅的「节点操作 → 脚本操作」上",
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@substore/internal": "workspace:*"
+  }
+}

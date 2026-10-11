@@ -1,0 +1,22 @@
+# 依赖与产物
+node_modules/
+**/node_modules/
+*.log
+
+# 构建产物不进版本库：发版时由 CI 从源码重新构建，
+# 上传 OSS 与作为 Release 附件归档。本地用 pnpm build 生成。
+packages/*/dist/
+
+# 测试与构建缓存
+**/.vite/
+coverage/
+*.tsbuildinfo
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 编辑器
+.idea/
+.vscode/
+*.swp

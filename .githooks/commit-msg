@@ -1,0 +1,9 @@
+#!/bin/sh
+# 提交信息校验。真正的判定逻辑在 tools/check-commit-msg.mjs，与 CI 共用同一份实现。
+#
+# $1 = 提交信息文件路径（.git/COMMIT_EDITMSG 或 -m/--amend 的临时文件）
+#
+# 紧急情况下可用 `git commit --no-verify` 绕过，但 CI 仍会检查，
+# 所以绕过只在本地临时救急时有用。
+
+exec node "$(git rev-parse --show-toplevel)/tools/check-commit-msg.mjs" --message-file "$1"

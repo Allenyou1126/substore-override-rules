@@ -1,0 +1,54 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+
+  "plugins": ["eslint", "typescript", "unicorn", "import", "promise", "node"],
+
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+
+  "env": {
+    "node": true,
+    "es2026": true
+  },
+
+  "options": {
+    "typeAware": true,
+    "reportUnusedDisableDirectives": "warn"
+  },
+
+  "rules": {
+    "eqeqeq": "error",
+    "no-console": "warn",
+
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-non-null-assertion": "error",
+    "@typescript-eslint/consistent-type-imports": ["error", { "fixStyle": "inline-type-imports" }],
+
+    "import/no-cycle": "error"
+  },
+
+  "overrides": [
+    {
+      "files": ["tools/**/*.mjs", "scripts/**/*.mjs"],
+      "rules": {
+        "no-console": "off"
+      }
+    },
+    {
+      "files": ["**/*.test.ts"],
+      "rules": {
+        "no-console": "off"
+      }
+    },
+    {
+      "files": ["packages/*/src/index.ts"],
+      "rules": {
+        "no-unused-vars": "off"
+      }
+    }
+  ],
+
+  "ignorePatterns": ["**/node_modules/**", "**/dist/**", "pnpm-lock.yaml"]
+}
