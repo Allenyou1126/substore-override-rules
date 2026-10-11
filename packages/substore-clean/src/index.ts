@@ -32,7 +32,7 @@
  * 本次改动只打通「参数 → 生效」的链路，清洗逻辑本身属于后续开发。
  */
 
-import { parseScriptParams, z, zBool, type SubStoreScriptArguments } from '@substore/internal';
+import { parseScriptParams, z, type SubStoreScriptArguments } from "@substore/internal";
 
 /**
  * Sub-Store 在 `new Function` 里把 `$arguments` 作为形参注入，所以它不是一个
@@ -55,24 +55,20 @@ declare const $arguments: SubStoreScriptArguments;
  * 过滤、重命名、去重等真正的业务参数属于后续开发，加在这里即可。
  */
 const CLEAN_PARAMS = z.object({
-  // oxlint-disable-next-line no-underscore-dangle -- zod 就是这个 API 名，没有别名
-  enabled: z.optional(z._default(zBool(), true)),
+    name: z.string(),
 });
 
 function operator(
-  proxies: unknown[] = [],
-  _targetPlatform?: string,
-  _context?: Record<string, unknown>,
+    proxies: unknown[] = [],
+    _targetPlatform?: string,
+    _context?: Record<string, unknown>,
 ): unknown[] {
-  // 参数非法会抛错（消息可读、带字段名），Sub-Store 会把它写进日志：
-  //   Parser [Script Operator] failed ... Reason: ...
-  const params = parseScriptParams(CLEAN_PARAMS, $arguments);
+    // 参数非法会抛错（消息可读、带字段名），Sub-Store 会把它写进日志：
+    //   Parser [Script Operator] failed ... Reason: ...
+    // oxlint-disable-next-line no-unused-vars
+    const params = parseScriptParams(CLEAN_PARAMS, $arguments);
 
-  if (!params.enabled) {
-    return [];
-  }
-
-  return proxies;
+    return proxies;
 }
 
 /**

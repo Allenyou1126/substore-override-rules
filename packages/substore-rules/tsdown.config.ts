@@ -1,4 +1,4 @@
-import { defineConfig } from 'tsdown';
+import { defineConfig } from "tsdown";
 
 /**
  * 产物是给 Sub-Store 当**脚本文本**执行的，不是给 Node `import` 的库。
@@ -44,22 +44,22 @@ import { defineConfig } from 'tsdown';
  *   因此它本来就会被内联，不需要在这里列出。
  */
 export default defineConfig({
-  entry: ['src/index.ts'],
-  outDir: 'dist',
-  format: 'es',
-  platform: 'neutral',
-  target: 'es2022',
-  dts: false,
-  sourcemap: false,
-  treeshake: true,
-  hash: false,
-  minify: false,
-  clean: true,
-  deps: {
-    alwaysBundle: [/^@substore\/internal$/],
-  },
-  outputOptions: {
-    // 默认会叫 index.js；OSS 对象键与冒烟测试都用 substore-rules.js
-    entryFileNames: 'substore-rules.js',
-  },
+    entry: ["src/index.ts"],
+    outDir: "dist",
+    format: "es",
+    platform: "neutral",
+    target: "es2022",
+    dts: false,
+    sourcemap: false,
+    treeshake: true,
+    hash: false,
+    minify: false,
+    clean: true,
+    deps: {
+        alwaysBundle: [/^@substore\/internal$/],
+    },
+    outputOptions: {
+        // 默认会叫 index.js；OSS 对象键与冒烟测试都用 substore-rules.js
+        entryFileNames: "substore-rules.js",
+    },
 });

@@ -12,7 +12,7 @@
   "scripts": {
     "prepare": "node scripts/setup-hooks.mjs",
     "hooks:install": "node scripts/setup-hooks.mjs",
-    "typecheck": "pnpm -r --no-bail typecheck",
+    "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r --no-bail typecheck",
     "test": "pnpm -r --no-bail test",
     "build": "pnpm -r --no-bail build",
     "clean": "pnpm -r --no-bail exec rm -rf dist",
@@ -23,8 +23,8 @@
     "check": "pnpm typecheck && pnpm lint && pnpm format:check",
     "check:version": "node tools/check-version.mjs",
     "commit:check": "node tools/check-commit-msg.mjs",
-    "smoke": "node tools/smoke.mjs",
-    "verify": "pnpm check && pnpm check:version --check && pnpm build && pnpm smoke && pnpm test"
+    "smoke": "pnpm run test",
+    "verify": "pnpm check && pnpm check:version --check && pnpm build && pnpm test"
   },
   "devDependencies": {
     "@types/node": "26.6.5",

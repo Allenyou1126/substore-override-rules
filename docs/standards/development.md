@@ -26,9 +26,9 @@ dev 上开发 → 开 PR: dev → prod → 检查通过 → 合入 → 在 prod 
 因此仓库里有两个 workflow：
 
 - `.github/workflows/guard-prod-source.yml` + `tools/check-prod-source.mjs` —— 真正的来源守卫。
-  - `pull_request`（base `prod`）：断言 head 分支是 `dev`。
-  - `push`（`prod`）：断言被推送的提交是把 `dev` 合入 `prod` 的**合入提交**（判定第二个父提交是否在 `dev` 的祖先链上）。
-  - 证据不足时（首次建立 `prod`、浅克隆、引用被删除）**退出码 2 = 软失败**，打 warning 放行而不是卡死正常流程。看到这个 warning 必须人工确认来源。
+    - `pull_request`（base `prod`）：断言 head 分支是 `dev`。
+    - `push`（`prod`）：断言被推送的提交是把 `dev` 合入 `prod` 的**合入提交**（判定第二个父提交是否在 `dev` 的祖先链上）。
+    - 证据不足时（首次建立 `prod`、浅克隆、引用被删除）**退出码 2 = 软失败**，打 warning 放行而不是卡死正常流程。看到这个 warning 必须人工确认来源。
 - `.github/workflows/verify.yml` —— 同一个守卫 + 完整代码检查。
 
 ### 1.2 服务端设置清单（必须手动完成，文件表达不了）
@@ -177,6 +177,7 @@ pnpm check:version --check --tag v0.2.0
 - **所有依赖写精确版本**，不用 `^` / `~`。这是刻意的：发版时由 CI 从 tag 的源码重新构建产物，依赖浮动会让「同一个 tag 两次构建出不同内容」，构建必须可复现。
 - 当前固定：`tsdown@0.23.0`、`oxlint@1.87.0`、`oxfmt@0.72.0`、`oxlint-tsgolint@7.0.2003`、`typescript@7.0.2`、`vitest@5.0.3`、`@types/node@26.6.5`、`zod@4.6.5`（Zod Mini，`packages/internal` 的运行时依赖）。
 - `zod` 写在 `packages/internal` 的 **devDependencies** 而不是 dependencies，是刻意的：产物是自包含脚本，Sub-Store 不 `import` 本包；tsdown 只把生产依赖当 external，因此 zod 会被内联进产物。
+- **测试与类型工具声明在用到它的那个包里**：两个交付包的 devDependencies 里有 `@types/node` 与 `vitest`，`internal` 里有 `vitest`。pnpm 的 `node_modules` 是隔离的，若只声明在仓库根，就得靠向上查找才能命中——`tsc` 会那样找，**编辑器语言服务不一定会**，结果是 `"types": ["node"]` 静默失效（`node:fs`、`Buffer` 报红）而命令行一切正常。新增包或新增测试工具时照此声明。
 
 ### 4.2 `minimumReleaseAge`：不要关闭
 
@@ -216,29 +217,35 @@ allowBuilds: {} # 无依赖需要放行安装脚本
    实测：`iife` 产出 `(function () { … })();`，函数被关进闭包，`return operator` 报 `operator is not defined`。
 3. **`treeshake` 必须为 `true`，且入口末尾必须保留 marker 赋值**（形如 `(globalThis as Record<string, unknown>).__substoreCleanEntry = { operator };`）。
    入口函数在源码里没有任何调用点，marker 用一条真实顶层副作用让打包器保住它们。
-   - 删掉 marker：产物**静默**变成空壳（构建不会失败），由 `pnpm smoke` 的「顶层函数声明」断言拦下。
-   - 退回 `treeshake: false`：整棵依赖图被原样内联，实测产物由约 42 kB 涨到 613 kB（gzip 13 kB → 111 kB），引入 Zod Mini 的意义全部消失。`pnpm smoke` 会打印体积，便于发现。
+    - 删掉 marker：产物**静默**变成空壳（构建不会失败），由 `pnpm smoke` 的「顶层函数声明」断言拦下。
+    - 退回 `treeshake: false`：整棵依赖图被原样内联，实测产物由约 42 kB 涨到 613 kB（gzip 13 kB → 111 kB），引入 Zod Mini 的意义全部消失。`pnpm smoke` 会打印体积，便于发现。
 4. **产物不能把函数包进闭包，也不能出现 `require(`**。
    `platform: 'neutral'` 保证不注入 Node 平台假设；`new Function` 环境里 `require` 是 `undefined`。
 
-`pnpm smoke` 会检查产物形状、以复刻的 Sub-Store 环境实际调用一次（含注入 `$arguments` 验证参数链路），并打印每个产物的字节数与 gzip 体积。**它是产物契约的唯一验收手段，任何构建配置改动都必须让它通过。**
+`pnpm smoke`（= `pnpm test`：两个交付包的 `pretest` 先 `pnpm build`，再逐包 `vitest run --dir test`）会检查产物形状、以复刻的 Sub-Store 环境实际调用一次（含注入 `$arguments` 验证参数链路），打印每个产物的字节数与 gzip 体积，并对体积预算断言。**它是产物契约的唯一验收手段，任何构建配置改动都必须让它通过。**
 
 ### 5.1 测试分工
 
-| 层次     | 工具                                 | 覆盖什么                                                                       |
-| -------- | ------------------------------------ | ------------------------------------------------------------------------------ |
-| 单元测试 | vitest（`packages/*/src/*.test.ts`） | 可复用的纯函数逻辑；入口源码的文本契约（顶层函数存在、无 export、marker 存在） |
-| 产物冒烟 | `tools/smoke.mjs`                    | `dist/*.js` 的真实形状、可执行性、`$arguments` 参数链路与体积                  |
+| 层次     | 工具                                                           | 覆盖什么                                             |
+| -------- | -------------------------------------------------------------- | ---------------------------------------------------- |
+| 单元测试 | vitest（`packages/*/src/*.test.ts`）                           | 可复用的纯函数逻辑（`$arguments` 解析、强制转换等）  |
+| 产物冒烟 | vitest（`packages/*/test/*.test.ts`，交付包 `pretest` 先构建） | `dist/*.js` 的真实形状、可执行性、参数链路与体积预算 |
 
 **两者不可互相替代**：单元测试测的是源码模块，Sub-Store 执行的是产物文本，取入口的机制完全不同。开发新逻辑时，把可测的纯粹逻辑抽成可导出的小模块，入口只负责编排——否则这段逻辑在单元测试里无从触及。
+
+冒烟用例读的是 `dist/` 里的产物，所以两个交付包的 `test` 脚本都带 `pretest: pnpm run build`：`pnpm test` / `pnpm smoke` / `pnpm verify` 都会先构建再测，只有单独跑 `vitest run --dir test` 才会读到旧产物。求值环境复刻在 `packages/internal/src/sandbox.ts`，两个交付包共用一份，避免两套实现漂移。
 
 ---
 
 ## 6. 提交前自查
 
 ```bash
-pnpm verify   # check + check:version + build + smoke + test
+pnpm verify   # check + check:version + build + test
 ```
+
+`pnpm smoke` 与 `pnpm test` 是同一条命令（根 `package.json` 里 `smoke` = `pnpm run test`），`verify` 只跑一次，不再重复。CI 与发版脚本沿用 `pnpm smoke` 这个名字。
+
+`pnpm check` 里的 typecheck 有两层：先跑根 `tsconfig.json`（给编辑器/语言服务的**全仓项目**，覆盖 `packages/*/src` 与 `packages/*/test`），再逐包跑各自的 tsconfig。两层必须都能过 —— 根项目与包配置一旦结论分叉，LSP 与命令行就会各说各话（`test/` 没被任何项目覆盖时，`types: ["node"]` 静默失效就是这么发生的）。
 
 改动 `packages/*/src/` 下非测试文件、或改动 tsdown / package.json 等构建配置时，**必须跑 `pnpm smoke`**（`pnpm verify` 已包含）。产物形状的三条约束（见 §5）从源码看不出来，只有它能发现。
 

@@ -66,36 +66,36 @@ export type SubStoreScriptArguments = Record<string, unknown> | string | undefin
 
 /** 一次请求的元信息，对应 `$options._req`。 */
 export interface SubStoreRequestInfo {
-  method?: string;
-  url?: string;
-  path?: string;
-  query?: Record<string, unknown>;
-  params?: Record<string, unknown>;
-  headers?: Record<string, string | undefined>;
-  body?: unknown;
-  socket?: { remoteAddress?: string };
+    method?: string;
+    url?: string;
+    path?: string;
+    query?: Record<string, unknown>;
+    params?: Record<string, unknown>;
+    headers?: Record<string, string | undefined>;
+    body?: unknown;
+    socket?: { remoteAddress?: string };
 }
 
 /** 脚本可以写回的自定义响应，对应 `$options._res`。 */
 export interface SubStoreResponsePatch {
-  status?: number;
-  headers?: Record<string, string>;
+    status?: number;
+    headers?: Record<string, string>;
 }
 
 /** 输出链接 `?$options=` 解析后的对象。 */
 export interface SubStoreRequestOptions {
-  _req?: SubStoreRequestInfo;
-  _res?: SubStoreResponsePatch;
-  [key: string]: unknown;
+    _req?: SubStoreRequestInfo;
+    _res?: SubStoreResponsePatch;
+    [key: string]: unknown;
 }
 
 /** Sub-Store 内部节点对象。结构整体参照 mihomo，字段随平台转换。 */
 export interface SubStoreProxy {
-  name: string;
-  type: string;
-  server?: string;
-  port?: number;
-  [key: string]: unknown;
+    name: string;
+    type: string;
+    server?: string;
+    port?: number;
+    [key: string]: unknown;
 }
 
 /** 目标输出平台，例如 'Surge'、'ClashMeta'、'sing-box'。 */
@@ -110,23 +110,23 @@ export type SubStoreTargetPlatform = string;
  * - `source`：订阅/组合订阅数据，`source._collection` 是否存在可判断脚本挂在单条订阅还是组合订阅上
  */
 export interface SubStoreScriptContext {
-  env?: unknown;
-  process?: SubStoreProcessControl;
-  raw?: unknown;
-  source?: Record<string, unknown>;
-  [key: string]: unknown;
+    env?: unknown;
+    process?: SubStoreProcessControl;
+    raw?: unknown;
+    source?: Record<string, unknown>;
+    [key: string]: unknown;
 }
 
 /** `context.process` 的形状；`disable` 跳过列出的后续 action，`enable` 只执行列出的。 */
 export interface SubStoreProcessControl {
-  type: 'disable' | 'enable';
-  customNames: string[];
+    type: "disable" | "enable";
+    customNames: string[];
 }
 
 /** 脚本文本在运行时能看到的全局对象。未使用到的项不必声明。 */
 export interface SubStoreRuntimeGlobals {
-  /** 编辑页「参数」字段传入的脚本参数。 */
-  readonly $arguments: SubStoreScriptArguments | undefined;
-  /** 输出链接上的 `?$options=` 参数；含 `_req` 与可写的 `_res`。 */
-  readonly $options: SubStoreRequestOptions | undefined;
+    /** 编辑页「参数」字段传入的脚本参数。 */
+    readonly $arguments: SubStoreScriptArguments | undefined;
+    /** 输出链接上的 `?$options=` 参数；含 `_req` 与可写的 `_res`。 */
+    readonly $options: SubStoreRequestOptions | undefined;
 }

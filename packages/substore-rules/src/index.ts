@@ -35,7 +35,7 @@
  * 规则集数据、策略组构造、配置合并属于后续开发。
  */
 
-import { parseScriptParams, z, zBool, type SubStoreScriptArguments } from '@substore/internal';
+import { parseScriptParams, z, zBool, type SubStoreScriptArguments } from "@substore/internal";
 
 /**
  * Sub-Store 在 `new Function` 里把 `$arguments` 作为形参注入（mihomo 路径里它是
@@ -54,27 +54,27 @@ declare const $arguments: SubStoreScriptArguments;
  * 真正的规则相关参数属于后续开发，加在这里即可。
  */
 const RULES_PARAMS = z.object({
-  // oxlint-disable-next-line no-underscore-dangle -- zod 就是这个 API 名，没有别名
-  enabled: z.optional(z._default(zBool(), true)),
+    // oxlint-disable-next-line no-underscore-dangle -- zod 就是这个 API 名，没有别名
+    enabled: z.optional(z._default(zBool(), true)),
 });
 
 /** mihomo 配置的最小形状。字段含义见 mihomo 文档，这里只固定入口契约。 */
 interface MihomoConfig {
-  'proxy-groups'?: unknown[];
-  rules?: string[];
-  'rule-providers'?: Record<string, unknown>;
-  [key: string]: unknown;
+    "proxy-groups"?: unknown[];
+    rules?: string[];
+    "rule-providers"?: Record<string, unknown>;
+    [key: string]: unknown;
 }
 
 /**
  * 文件路径下的入口：收到解析后的 mihomo 配置，返回修改后的配置对象。
  */
 async function main(config: MihomoConfig): Promise<MihomoConfig> {
-  // 参数非法会抛错，Sub-Store 会把消息写进日志。异步入口里的抛错同样会被它捕获。
-  // 目前解析结果还没被用到 —— 规则相关参数属于后续开发。
-  parseScriptParams(RULES_PARAMS, $arguments);
+    // 参数非法会抛错，Sub-Store 会把消息写进日志。异步入口里的抛错同样会被它捕获。
+    // 目前解析结果还没被用到 —— 规则相关参数属于后续开发。
+    parseScriptParams(RULES_PARAMS, $arguments);
 
-  return config;
+    return config;
 }
 
 /**
@@ -82,13 +82,13 @@ async function main(config: MihomoConfig): Promise<MihomoConfig> {
  * `operator`；此处原样返回节点，不改变用户订阅。
  */
 function operator(
-  proxies: unknown[] = [],
-  _targetPlatform?: string,
-  _context?: Record<string, unknown>,
+    proxies: unknown[] = [],
+    _targetPlatform?: string,
+    _context?: Record<string, unknown>,
 ): unknown[] {
-  parseScriptParams(RULES_PARAMS, $arguments);
+    parseScriptParams(RULES_PARAMS, $arguments);
 
-  return proxies;
+    return proxies;
 }
 
 /**

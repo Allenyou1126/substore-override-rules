@@ -6,13 +6,15 @@
   "type": "module",
   "description": "内部共享包：Sub-Store 运行时契约类型与脚本参数解析（不构建、不发布）",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./sandbox": "./src/sandbox.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --dir src"
   },
   "devDependencies": {
+    "vitest": "5.0.3",
     "zod": "4.6.5"
   }
 }

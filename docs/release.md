@@ -25,22 +25,22 @@
 
 ```json
 {
-  "Version": "1",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": ["oss:PutObject"],
-      "Resource": ["acs:oss:*:*:blog-hk/substore-override-rules/*"]
-    },
-    {
-      "Effect": "Allow",
-      "Action": ["oss:GetObject", "oss:ListObjects"],
-      "Resource": [
-        "acs:oss:*:*:blog-hk/substore-override-rules",
-        "acs:oss:*:*:blog-hk/substore-override-rules/*"
-      ]
-    }
-  ]
+    "Version": "1",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": ["oss:PutObject"],
+            "Resource": ["acs:oss:*:*:blog-hk/substore-override-rules/*"]
+        },
+        {
+            "Effect": "Allow",
+            "Action": ["oss:GetObject", "oss:ListObjects"],
+            "Resource": [
+                "acs:oss:*:*:blog-hk/substore-override-rules",
+                "acs:oss:*:*:blog-hk/substore-override-rules/*"
+            ]
+        }
+    ]
 }
 ```
 

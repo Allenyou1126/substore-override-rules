@@ -1,4 +1,17 @@
 {
-  "extends": "./tsconfig.base.json",
-  "include": ["packages/*/src/**/*.ts", "packages/*/tsdown.config.ts"]
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+        /* 这是「整个仓库」那一份 TS 项目：给编辑器 / 语言服务用，同时被 `pnpm typecheck` 检查。
+       它必须与各包自己的 tsconfig 得出**同样的结论**，否则 LSP 与命令行会各说各话 ——
+       之前 `test/` 目录没被任何项目覆盖时，`types: ["node"]` 就是这么静默失效的。
+       因此这里取各包设置的并集：
+         · 测试文件要读产物文本（fs / zlib / import.meta.url）→ 需要 Node 类型与 DOM lib；
+         · 入口文件由 Sub-Store 在运行时取用，源码里没有调用点（见各包 tsconfig 的长注释）
+           → 关掉未使用检查，否则整个入口报 TS6133。
+       各包的严格检查（例如 internal 保留 noUnusedLocals）仍由各自的 tsconfig 负责。 */
+        "types": ["node"],
+        "lib": ["ES2022", "DOM"],
+        "noUnusedLocals": false
+    },
+    "include": ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts", "packages/*/tsdown.config.ts"]
 }

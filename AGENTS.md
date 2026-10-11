@@ -13,7 +13,7 @@
 
 `packages/internal` 是内部共享包（契约类型 + 脚本参数解析），不构建、不发布，由 tsdown 内联进产物。它依赖 `zod@4.6.5`（Zod Mini），**所以它现在有运行时依赖了**。
 
-**当前状态：只有框架。两个脚本只接了一个 `enabled` 参数（默认开着），节点与配置行为仍是透传。** 不要以为已有实现，也不要把占位符当成遗漏而自行「补全」——业务逻辑的添加是独立任务。
+**当前状态：只有框架。** 参数解析链路已打通：`@substore/clean` 的 schema 目前要求一个 `name`（尚未真正用于清洗），`@substore/rules` 接一个 `enabled` 开关（默认开着）。节点与配置行为仍是**透传**。不要以为已有实现，也不要把占位符当成遗漏而自行「补全」——业务逻辑的添加是独立任务。
 
 ## 四条不可违反的契约红线
 
@@ -44,20 +44,24 @@ mihomo 配置路径另有一套：把脚本文本整体展开进异步函数，�
 4. **产物不能把函数包进任何闭包，也不能出现 `require(`。**
    `platform: 'neutral'` 保证不注入 Node 平台假设；Sub-Store 的 `new Function` 环境里 `require` 是 `undefined`。
 
-改动构建配置或入口文件后，**必须**跑 `pnpm smoke`（`pnpm verify` 已包含）。单元测试**测不到**这些问题：它读的是源码模块，Sub-Store 执行的是产物文本。
+改动构建配置或入口文件后，**必须**跑 `pnpm smoke`（= `pnpm test`，`pnpm verify` 已包含）。单元测试**测不到**这些问题：它读的是源码模块，Sub-Store 执行的是产物文本。
 
 ### 由此派生的两个「看起来奇怪但正确」的点
 
 - 入口里的 `operator` / `main` 在源码里**没有调用点**，靠末尾的 marker 让打包器认为它们被用到。它们在根 `.oxlintrc.json`（override）和 `packages/*/tsconfig.json`（`noUnusedLocals: false`）里仍被显式放过 —— **不要改成 export，也不要重新打开这两个检查**。若要让它们可被单元测试调用，请把纯逻辑抽成单独的可导出模块，入口只负责编排。
-- `pnpm smoke` 除了实际调用一次，还会**静态检查产物不以 `(` 开头**、必须含顶层函数声明、不含 `import` / `export` / `require(`，并**打印每个产物的字节数与 gzip 体积**——体积突然涨到几百 kB 就说明 treeshake 被关了。
+- 产物契约测试是**逐包一个 Vitest 套件**（`packages/*/test/artifact.test.ts`）：两个交付包的 `pretest` 先 `pnpm build`，再 `vitest run --dir test`；根 `pnpm test` = `pnpm -r test`，`pnpm smoke` 是它的别名。它除了实际调用一次，还会**静态检查产物不以 `(` 开头**、必须含顶层函数声明、不含 `import` / `export` / `require(`，**打印每个产物的字节数与 gzip 体积**并在预算（128 kB）内断言——体积突然涨到几百 kB 就说明 treeshake 被关了。求值复刻在 `packages/internal/src/sandbox.ts`（测试专用，**入口文件绝不能 import 它**）。
 
 ## 每次改动都要过的关卡
 
 ```bash
-pnpm verify   # = check + check:version + build + smoke + test
+pnpm verify   # = check + check:version + build + test（smoke 与 test 同一条命令，不重复跑）
 ```
 
 分步含义见 [README 命令表](README.md#命令)。提交信息由 `.githooks/commit-msg` 自动校验，**可被 `--no-verify` 绕过但 CI 不会**。
+
+根 `test` = `pnpm -r --no-bail test`，跑什么由各包自己的脚本决定：`internal` 跑 `vitest run --dir src`（`src/*.test.ts` 单测），两个交付包跑 `vitest run --dir test`（`test/*.test.ts` 产物契约测试）且 `pretest` 先 `pnpm build`——冒烟读的是 `dist/`，不先构建测的就是旧产物。`pnpm smoke` 只是 `pnpm test` 的别名（CI 与发版脚本沿用这个名字）。新增交付包时 `test` + `pretest` 都要加，否则它的产物契约会**静默不测**。
+
+`pnpm typecheck` 先跑根 `tsconfig.json`（给编辑器/语言服务的**全仓项目**，覆盖 `packages/*/src` 与 `packages/*/test`），再逐包跑各自的 tsconfig。两层必须都能过：根项目与包配置结论一旦分叉，LSP 与命令行就会各说各话（`test/` 没被覆盖时 `types: ["node"]` 静默失效就是这样发生的）。
 
 ## 提交与分支
 
@@ -81,6 +85,7 @@ pnpm verify   # = check + check:version + build + smoke + test
 | 提交 `dist/`                                                   | **不要**。`dist/` 不进版本库；发版时 CI 从 tag 源码重建。                                                                 |
 | 关闭 `minimumReleaseAge`                                       | **不要**。它是供应链保护，见 [规范 §4.2](docs/standards/development.md)。装不上就等或退到已满 24h 的版本。   |
 | 依赖写成 `^` / `~`                                             | **不要**。全部精确版本，否则同一 tag 两次构建结果可能不同。                                                |
+| 测试/类型依赖只声明在仓库根                                    | 编辑器 LSP 可能找不到类型（`types: ["node"]` 静默失效、`node:fs` / `Buffer` 报红），命令行却全绿。`@types/node`、`vitest` 必须在**用到它的那个包**的 devDependencies 里声明。 |
 | 在各包加独立的 oxlint / oxfmt 配置                             | **不要**。两个工具只在仓库根配置一处。                                                                     |
 | 改了 `packages/*/src/` 却没跑冒烟                              | 产物形状的回归只有 `pnpm smoke` 能发现。                                                                    |
 | 改 workflow 后只做 YAML 语法检查                               | 不够。逐步 `bash -n` 校验每个 `run:` 步骤；本仓库已多次在 CI 上暴露只测语法测不出的问题。                   |

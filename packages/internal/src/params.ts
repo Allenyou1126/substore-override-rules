@@ -30,9 +30,9 @@
  * 就在同一份 `$arguments` 里，而且钉住旧版本的链接在脚本升级后必须继续可用。
  */
 
-import { z } from 'zod/mini';
+import { z } from "zod/mini";
 
-import type { SubStoreScriptArguments } from './substore';
+import type { SubStoreScriptArguments } from "./substore";
 
 /**
  * 参数 schema 的形状。返回值类型由它推导，调用点不必手写泛型。
@@ -45,29 +45,29 @@ export type ScriptParamsSpec<T> = z.ZodMiniType<T>;
 
 /** 往 issues 里塞一条自定义消息。`abort: true` 保证同一个字段只报一条。 */
 function fail(context: { issues: z.core.$ZodRawIssue[] }, message: string, input: unknown): void {
-  context.issues.push({ code: 'custom', message, input, abort: true });
+    context.issues.push({ code: "custom", message, input, abort: true });
 }
 
 /** 把值渲染进错误消息：字符串带引号，undefined / 符号之类也能安全显示。 */
 function describe(value: unknown): string {
-  if (typeof value === 'string') {
-    return JSON.stringify(value);
-  }
+    if (typeof value === "string") {
+        return JSON.stringify(value);
+    }
 
-  if (value === undefined) {
-    return 'undefined';
-  }
+    if (value === undefined) {
+        return "undefined";
+    }
 
-  if (value === null || typeof value === 'number' || typeof value === 'boolean') {
-    return `${value}`;
-  }
+    if (value === null || typeof value === "number" || typeof value === "boolean") {
+        return `${value}`;
+    }
 
-  // 对象 / 函数 / symbol 之类没有可读的字符串形式，交给 JSON（失败就退回类型名）。
-  try {
-    return JSON.stringify(value) ?? typeof value;
-  } catch {
-    return typeof value;
-  }
+    // 对象 / 函数 / symbol 之类没有可读的字符串形式，交给 JSON（失败就退回类型名）。
+    try {
+        return JSON.stringify(value) ?? typeof value;
+    } catch {
+        return typeof value;
+    }
 }
 
 /**
@@ -80,29 +80,29 @@ function describe(value: unknown): string {
  * 刻意不用 `z.coerce.boolean()`：它按 JS 真值语义处理，`'false'` 会变成 true。
  */
 export function zBool(): z.ZodMiniType<boolean> {
-  return z.pipe(
-    z.transform((value: unknown, context) => {
-      if (typeof value === 'boolean') {
-        return value;
-      }
+    return z.pipe(
+        z.transform((value: unknown, context) => {
+            if (typeof value === "boolean") {
+                return value;
+            }
 
-      if (typeof value === 'string') {
-        const normalized = value.trim().toLowerCase();
+            if (typeof value === "string") {
+                const normalized = value.trim().toLowerCase();
 
-        if (['true', '1', 'yes', 'on', ''].includes(normalized)) {
-          return true;
-        }
+                if (["true", "1", "yes", "on", ""].includes(normalized)) {
+                    return true;
+                }
 
-        if (['false', '0', 'no', 'off'].includes(normalized)) {
-          return false;
-        }
-      }
+                if (["false", "0", "no", "off"].includes(normalized)) {
+                    return false;
+                }
+            }
 
-      fail(context, `需为 true/false 之一，收到 ${describe(value)}`, value);
-      return value;
-    }),
-    z.boolean(),
-  );
+            fail(context, `需为 true/false 之一，收到 ${describe(value)}`, value);
+            return value;
+        }),
+        z.boolean(),
+    );
 }
 
 /**
@@ -112,43 +112,43 @@ export function zBool(): z.ZodMiniType<boolean> {
  * 小数、非数字字符串、越界都会报错，并且消息里说清是哪个约束不满足。
  */
 export function zIntIn(
-  bounds: { min?: number; max?: number } = {},
-  label = '该参数',
+    bounds: { min?: number; max?: number } = {},
+    label = "该参数",
 ): z.ZodMiniType<number> {
-  const { min, max } = bounds;
+    const { min, max } = bounds;
 
-  return z.pipe(
-    z.transform((value: unknown) => {
-      if (typeof value !== 'string') {
-        return value;
-      }
+    return z.pipe(
+        z.transform((value: unknown) => {
+            if (typeof value !== "string") {
+                return value;
+            }
 
-      const trimmed = value.trim();
+            const trimmed = value.trim();
 
-      if (trimmed !== '' && !Number.isNaN(Number(trimmed))) {
-        return Number(trimmed);
-      }
+            if (trimmed !== "" && !Number.isNaN(Number(trimmed))) {
+                return Number(trimmed);
+            }
 
-      return value;
-    }),
-    z.number().check((context) => {
-      const value = context.value;
+            return value;
+        }),
+        z.number().check((context) => {
+            const value = context.value;
 
-      if (!Number.isInteger(value)) {
-        fail(context, `${label}需为整数，收到 ${describe(value)}`, value);
-        return;
-      }
+            if (!Number.isInteger(value)) {
+                fail(context, `${label}需为整数，收到 ${describe(value)}`, value);
+                return;
+            }
 
-      if (min !== undefined && value < min) {
-        fail(context, `${label}需 ≥ ${min}，收到 ${value}`, value);
-        return;
-      }
+            if (min !== undefined && value < min) {
+                fail(context, `${label}需 ≥ ${min}，收到 ${value}`, value);
+                return;
+            }
 
-      if (max !== undefined && value > max) {
-        fail(context, `${label}需 ≤ ${max}，收到 ${value}`, value);
-      }
-    }),
-  );
+            if (max !== undefined && value > max) {
+                fail(context, `${label}需 ≤ ${max}，收到 ${value}`, value);
+            }
+        }),
+    );
 }
 
 /**
@@ -158,101 +158,108 @@ export function zIntIn(
  * `k=["a","b","c"]` 好写。数组形式（编辑页 JS 对象）照常通过，前后空白与空段被丢弃。
  */
 export function zCsv(item?: z.ZodMiniType<string>): z.ZodMiniType<string[]> {
-  return z.pipe(
-    z.transform((value: unknown) => {
-      if (typeof value === 'string') {
-        return value
-          .split(',')
-          .map((part) => part.trim())
-          .filter((part) => part !== '');
-      }
+    return z.pipe(
+        z.transform((value: unknown) => {
+            if (typeof value === "string") {
+                return value
+                    .split(",")
+                    .map((part) => part.trim())
+                    .filter((part) => part !== "");
+            }
 
-      return value;
-    }),
-    z.array(item ?? z.string()),
-  );
+            return value;
+        }),
+        z.array(item ?? z.string()),
+    );
 }
 
 /** `decodeURIComponent` 对残缺的百分号编码会抛错，这里降级为原样返回。 */
 function safeDecode(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
+    try {
+        return decodeURIComponent(value);
+    } catch {
+        return value;
+    }
 }
 
 /** 复刻上游 `k=v&k2=v2` 回退分支：上游在拿不到值时记成 true，这里保持一致。 */
 function parseQueryLike(text: string): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
+    const result: Record<string, unknown> = {};
 
-  for (const pair of text.split('&')) {
-    if (pair === '') {
-      continue;
+    for (const pair of text.split("&")) {
+        if (pair === "") {
+            continue;
+        }
+
+        const separator = pair.indexOf("=");
+        const key = separator === -1 ? pair : pair.slice(0, separator);
+
+        if (key === "") {
+            continue;
+        }
+
+        const rawValue = separator === -1 ? undefined : pair.slice(separator + 1);
+        result[key] = rawValue ? safeDecode(rawValue) : true;
     }
 
-    const separator = pair.indexOf('=');
-    const key = separator === -1 ? pair : pair.slice(0, separator);
-
-    if (key === '') {
-      continue;
-    }
-
-    const rawValue = separator === -1 ? undefined : pair.slice(separator + 1);
-    result[key] = rawValue ? safeDecode(rawValue) : true;
-  }
-
-  return result;
+    return result;
 }
 
 /** 把 `raw` 归一成待校验的对象；无法归一则抛错（消息里带原文片段，便于定位链接）。 */
 function toParamsObject(raw: SubStoreScriptArguments | null): Record<string, unknown> {
-  if (raw === undefined || raw === null) {
-    return {};
-  }
-
-  if (typeof raw === 'object') {
-    if (Array.isArray(raw)) {
-      throw new Error(
-        '脚本参数应为一个对象，收到数组。检查链接 `#` 后的内容或编辑页「参数」字段。',
-      );
+    if (raw === undefined || raw === null) {
+        return {};
     }
 
-    return raw;
-  }
+    if (typeof raw === "object") {
+        if (Array.isArray(raw)) {
+            throw new Error(
+                "脚本参数应为一个对象，收到数组。检查链接 `#` 后的内容或编辑页「参数」字段。",
+            );
+        }
 
-  if (typeof raw !== 'string') {
-    throw new Error(`脚本参数应为对象或字符串，收到 ${typeof raw}。`);
-  }
-
-  const text = raw.trim();
-
-  if (text === '') {
-    return {};
-  }
-
-  // `k=v&…` 的键不可能是引号、数字、`-` 开头的，所以这几个首字符就够了：
-  // 命中就按 JSON 解析（失败即报错），否则按 query 形式拆。
-  if (!/^[{[",\d-]/.test(text)) {
-    return parseQueryLike(text);
-  }
-
-  try {
-    const parsed: unknown = JSON.parse(text);
-
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      const actual = Array.isArray(parsed) ? '数组' : parsed === null ? 'null' : typeof parsed;
-      throw new Error(`解析结果不是 JSON 对象，而是${actual}`);
+        return raw;
     }
 
-    return { ...parsed };
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
+    if (typeof raw !== "string") {
+        throw new Error(`脚本参数应为对象或字符串，收到 ${typeof raw}。`);
+    }
 
-    throw new Error(`脚本参数的 JSON 解析失败：${reason}\n  收到的内容：${text.slice(0, 120)}`, {
-      cause: error,
-    });
-  }
+    const text = raw.trim();
+
+    if (text === "") {
+        return {};
+    }
+
+    // `k=v&…` 的键不可能是引号、数字、`-` 开头的，所以这几个首字符就够了：
+    // 命中就按 JSON 解析（失败即报错），否则按 query 形式拆。
+    if (!/^[{[",\d-]/.test(text)) {
+        return parseQueryLike(text);
+    }
+
+    try {
+        const parsed: unknown = JSON.parse(text);
+
+        if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+            const actual = Array.isArray(parsed)
+                ? "数组"
+                : parsed === null
+                  ? "null"
+                  : typeof parsed;
+            throw new Error(`解析结果不是 JSON 对象，而是${actual}`);
+        }
+
+        return { ...parsed };
+    } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+
+        throw new Error(
+            `脚本参数的 JSON 解析失败：${reason}\n  收到的内容：${text.slice(0, 120)}`,
+            {
+                cause: error,
+            },
+        );
+    }
 }
 
 /**
@@ -268,14 +275,14 @@ function toParamsObject(raw: SubStoreScriptArguments | null): Record<string, unk
  * const params = parseScriptParams(Params, $arguments);
  */
 export function parseScriptParams<T>(
-  schema: ScriptParamsSpec<T>,
-  raw: SubStoreScriptArguments | null,
+    schema: ScriptParamsSpec<T>,
+    raw: SubStoreScriptArguments | null,
 ): T {
-  const result = z.safeParse(schema, toParamsObject(raw));
+    const result = z.safeParse(schema, toParamsObject(raw));
 
-  if (!result.success) {
-    throw new Error(z.prettifyError(result.error), { cause: result.error });
-  }
+    if (!result.success) {
+        throw new Error(z.prettifyError(result.error), { cause: result.error });
+    }
 
-  return result.data;
+    return result.data;
 }

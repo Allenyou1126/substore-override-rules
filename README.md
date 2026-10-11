@@ -31,8 +31,8 @@ pnpm verify           # 一条命令跑完下面全部检查（提交前建议�
 | `pnpm check`                        | typecheck + lint + format:check                   |
 | `pnpm check:version`                | 版本号校验；`--list` 给出递增建议                 |
 | `pnpm build`                        | 各包 tsdown 构建                                  |
-| `pnpm smoke`                        | **产物契约验收**：用复刻的 Sub-Store 环境执行产物 |
-| `pnpm test`                         | 各包 vitest                                       |
+| `pnpm test`                         | **全部测试**：逐包 vitest（单测 + 产物契约）      |
+| `pnpm smoke`                        | **产物契约验收**：等价于 `pnpm test`              |
 | `pnpm clean`                        | 删除各包 `dist/`                                  |
 | `pnpm hooks:install`                | 单独安装 git 钩子（`pnpm install` 已自动做过）    |
 
@@ -56,11 +56,6 @@ https://blog-oss.allenyou.top/substore-override-rules/latest/substore-rules.js
 
 ## 脚本参数
 
-目前两个脚本只接受一个总开关（默认 `true`，也就是不改变任何东西）：
-
-| 参数      | 类型    | 默认值 | 作用                                              |
-| --------- | ------- | ------ | ------------------------------------------------- |
-| `enabled` | boolean | `true` | `false` 时 `substore-clean` 返回空数组（丢弃全部节点） |
 
 传参方式（`$arguments` 的几种来源都被解析层接住了）：
 
@@ -83,6 +78,20 @@ https://blog-oss.allenyou.top/substore-override-rules/latest/substore-clean.js#e
 - **参数名写错不会报错**（未声明的键被剥离）。Sub-Store 自己的 `noCache` / `insecure` 就在同一份 `$arguments` 里，而且钉住旧版本的链接在脚本升级后必须继续可用。
 - 即时预览页拿不到参数时按「没传」处理，全部取默认值。
 
+### `substore-clean`
+
+| 参数      | 类型    | 默认值 | 作用                                              |
+| --------- | ------- | ------ | ------------------------------------------------- |
+| `name` | string | 必需 | 用于给清洗后的节点附加统一标识 |
+
+### `substore-rules`
+
+只接受一个总开关（默认 `true`，也就是不改变任何东西）：
+
+| 参数      | 类型    | 默认值 | 作用                                              |
+| --------- | ------- | ------ | ------------------------------------------------- |
+| `enabled` | boolean | `true` | `false` 时 `substore-clean` 返回空数组（丢弃全部节点） |
+
 ## 产物契约（改动构建配置前务必读）
 
 Sub-Store 是把脚本当**脚本文本**执行的，不是 `import` 一个模块。它等价于：
@@ -102,15 +111,15 @@ new Function('$arguments', '$options', ..., `${script}\n return operator`)(...)
    入口函数没有源码引用，marker 用一条真实副作用让打包器保住它们。删掉 marker 产物会静默变空壳；退回 `treeshake: false` 则整棵依赖图被原样内联，产物从约 42 kB 涨到 613 kB。
 4. 产物不能以 `(` 开头、不能出现 `require(`。
 
-`pnpm smoke` 会逐条守住这些约束（检查产物形状 + 用复刻环境真正调用一次 + 注入 `$arguments` 验证参数链路 + 打印字节数与 gzip 体积），改动构建配置后请务必跑它。完整说明见 [`packages/internal/src/substore.ts`](packages/internal/src/substore.ts)。
+`pnpm smoke`（等价于 `pnpm test`）会逐条守住这些约束：两个交付包的 `pretest` 先 `pnpm build`，再用 `vitest run --dir test` 跑 [`packages/substore-clean/test/artifact.test.ts`](packages/substore-clean/test/artifact.test.ts) 与 [`packages/substore-rules/test/artifact.test.ts`](packages/substore-rules/test/artifact.test.ts) —— 检查产物形状、用复刻环境真正调用一次、注入 `$arguments` 验证参数链路、打印字节数与 gzip 体积并对体积预算断言（treeshake 被关掉时实测从约 42 kB 涨到 613 kB）。复刻的求值环境在 [`packages/internal/src/sandbox.ts`](packages/internal/src/sandbox.ts)。改动构建配置后请务必跑它。完整说明见 [`packages/internal/src/substore.ts`](packages/internal/src/substore.ts)。
 
 ## 仓库结构
 
 ```
-packages/internal/          # 内部共享：Sub-Store 契约类型 + 脚本参数解析（不构建、不发布）
-packages/substore-clean/    # 交付包 1：订阅清洗
-packages/substore-rules/    # 交付包 2：配置分流规则
-tools/                      # 校验器与冒烟脚本
+packages/internal/          # 内部共享：契约类型 + 参数解析 + 冒烟用的求值环境复刻（不构建、不发布）
+packages/substore-clean/    # 交付包 1：订阅清洗（产物契约测试在 test/artifact.test.ts）
+packages/substore-rules/    # 交付包 2：配置分流规则（产物契约测试在 test/artifact.test.ts）
+tools/                      # 校验器：提交信息、版本号、prod 合入来源
 scripts/                    # git 钩子安装
 .githooks/                  # 提交信息钩子
 .github/workflows/          # verify / guard-prod-source / release

@@ -18,19 +18,19 @@
  */
 
 export type {
-  SubStoreProcessControl,
-  SubStoreProxy,
-  SubStoreRequestInfo,
-  SubStoreRequestOptions,
-  SubStoreResponsePatch,
-  SubStoreRuntimeGlobals,
-  SubStoreScriptArguments,
-  SubStoreScriptContext,
-  SubStoreTargetPlatform,
-} from './substore';
+    SubStoreProcessControl,
+    SubStoreProxy,
+    SubStoreRequestInfo,
+    SubStoreRequestOptions,
+    SubStoreResponsePatch,
+    SubStoreRuntimeGlobals,
+    SubStoreScriptArguments,
+    SubStoreScriptContext,
+    SubStoreTargetPlatform,
+} from "./substore";
 
-export type { ScriptParamsSpec } from './params';
-export { parseScriptParams, zBool, zCsv, zIntIn } from './params';
+export type { ScriptParamsSpec } from "./params";
+export { parseScriptParams, zBool, zCsv, zIntIn } from "./params";
 
 /**
  * 把 zod 的 `z` 一并转出，是**刻意的**，有两个理由：
@@ -43,4 +43,4 @@ export { parseScriptParams, zBool, zCsv, zIntIn } from './params';
  * 从 `zod/mini` 再导出一次在打包上是无损的：产物本来就是整棵依赖图，
  * 多一个 re-export 不会增加字节。
  */
-export { z } from 'zod/mini';
+export { z } from "zod/mini";
