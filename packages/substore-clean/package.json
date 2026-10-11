@@ -2,6 +2,7 @@
   "name": "@substore/clean",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "订阅清洗脚本：配置在每条订阅的「节点操作 → 脚本操作」上",
   "scripts": {

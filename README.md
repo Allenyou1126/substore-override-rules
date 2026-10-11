@@ -106,3 +106,11 @@ docs/release.md                 # 发版手册（OSS 前置条件、回滚、排
 - `packages/substore-rules/src/index.ts` —— 规则集数据、策略组构造、配置合并。
 
 开发时请先读 [docs/standards/development.md](docs/standards/development.md)：里面有提交信息格式（**AI 辅助必须附 `Assisted-By` 尾注**）、版本递增判定表和契约红线。
+
+用 AI Agent 参与开发时，先让它读 [AGENTS.md](AGENTS.md)：那份文件把最容易改坏的契约红线、容易踩的坑和把关要求集中列了出来。
+
+## 许可
+
+[MIT](LICENSE) © 2026 Allenyou
+
+本项目打包的脚本会被导入代理客户端并处理你的订阅与配置。请在理解脚本行为的前提下使用；仓库作者不对使用后果承担责任。

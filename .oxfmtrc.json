@@ -16,6 +16,10 @@
     "**/dist/**",
     "pnpm-lock.yaml",
     "package.json",
-    "pnpm-workspace.yaml"
+    "pnpm-workspace.yaml",
+
+    "AGENTS.md",
+    "README.md",
+    "LICENSE"
   ]
 }
